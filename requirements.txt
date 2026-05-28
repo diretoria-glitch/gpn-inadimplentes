@@ -1,4 +1,4 @@
 Flask==3.0.3
 SQLAlchemy==2.0.30
-psycopg2-binary==2.9.9
+pg8000==1.30.3
 xlrd==2.0.1
