@@ -8,7 +8,10 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
-app = Flask(__name__)
+# Caminho absoluto — garante que o Flask encontre templates no Vercel
+_base_dir = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(__name__, template_folder=os.path.join(_base_dir, 'templates'))
 app.secret_key = os.environ.get('SECRET_KEY', 'troque-esta-chave-em-producao')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
@@ -17,6 +20,7 @@ APP_PASSWORD = os.environ.get('APP_PASSWORD', 'paraty2026')
 # ── Conexão com banco (totalmente defensiva — nunca trava o app) ──────────────
 
 engine = None
+_engine_error = ''
 
 try:
     _raw = os.environ.get('DATABASE_URL', '')
@@ -45,6 +49,7 @@ try:
             connect_args={'ssl_context': _ssl_ctx}
         )
 except Exception as _e:
+    _engine_error = str(_e)
     print(f'[ENGINE INIT ERROR] {_e}')
     engine = None
 
@@ -104,13 +109,18 @@ def login_required(f):
 @app.route('/ping')
 def ping():
     import sys
-    db_status = 'engine OK' if engine else 'engine None'
-    tmpl_folder = app.template_folder
+    tmpl_abs  = app.template_folder
+    tmpl_ok   = os.path.isdir(tmpl_abs)
+    login_ok  = os.path.isfile(os.path.join(tmpl_abs, 'login.html'))
+    has_db    = bool(os.environ.get('DATABASE_URL', ''))
+    db_status = 'OK' if engine else f'None | url_set={has_db} | err={_engine_error}'
     return (
         f'pong\n'
         f'python={sys.version}\n'
+        f'templates_path={tmpl_abs}\n'
+        f'templates_dir_exists={tmpl_ok}\n'
+        f'login_html_exists={login_ok}\n'
         f'db={db_status}\n'
-        f'templates={tmpl_folder}\n'
     ), 200, {'Content-Type': 'text/plain'}
 
 
