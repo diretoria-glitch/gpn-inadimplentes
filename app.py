@@ -664,10 +664,19 @@ def ping():
     import sys
     has_db = bool(os.environ.get('DATABASE_URL', ''))
     db_st  = 'OK' if engine else f'None | url_set={has_db} | err={_engine_error[:80]}'
+    count, qerr = 0, ''
+    if engine:
+        try:
+            with engine.connect() as conn:
+                r = conn.execute(text('SELECT COUNT(*) FROM titulos')).fetchone()
+                count = int(r[0])
+        except Exception as e:
+            qerr = str(e)[:120]
     return (
         f'pong\npython={sys.version}\n'
         f'db={db_st}\n'
-        f'templates=embedded (no files needed)\n'
+        f'titulos_no_banco={count}\n'
+        f'query_err={qerr}\n'
     ), 200, {'Content-Type': 'text/plain'}
 
 
@@ -743,23 +752,26 @@ def upload():
 @app.route('/api/data')
 @login_required
 def api_data():
-    ensure_db()
     if not engine:
         return jsonify({'data': [], 'last_updated': None})
-    with engine.connect() as conn:
-        rows = conn.execute(text('''
-            SELECT t.nome, t.venc::text, t.nota, t.valor::float, t.titulo_key,
-                   COALESCE(o.obs_text,'') AS obs
-            FROM titulos t
-            LEFT JOIN observacoes o ON t.titulo_key = o.titulo_key
-            ORDER BY t.venc ASC
-        ''')).fetchall()
-        meta = conn.execute(
-            text("SELECT value FROM meta WHERE key='last_updated'")
-        ).fetchone()
-    data = [{'nome':r[0],'venc':r[1],'nota':r[2] or '','valor':r[3],'key':r[4],'obs':r[5]}
-            for r in rows]
-    return jsonify({'data': data, 'last_updated': meta[0] if meta else None})
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text('''
+                SELECT t.nome, t.venc::text, t.nota, t.valor::float, t.titulo_key,
+                       COALESCE(o.obs_text,'') AS obs
+                FROM titulos t
+                LEFT JOIN observacoes o ON t.titulo_key = o.titulo_key
+                ORDER BY t.venc ASC
+            ''')).fetchall()
+            meta = conn.execute(
+                text("SELECT value FROM meta WHERE key='last_updated'")
+            ).fetchone()
+        data = [{'nome':r[0],'venc':r[1],'nota':r[2] or '','valor':r[3],'key':r[4],'obs':r[5]}
+                for r in rows]
+        return jsonify({'data': data, 'last_updated': meta[0] if meta else None})
+    except Exception as e:
+        print(f'[API/DATA] {e}')
+        return jsonify({'data': [], 'last_updated': None, 'error': str(e)})
 
 
 @app.route('/api/obs', methods=['POST'])
