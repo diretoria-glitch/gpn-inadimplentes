@@ -1,7 +1,4 @@
 Flask==3.0.3
-gunicorn==22.0.0
-psycopg2-binary==2.9.9
 SQLAlchemy==2.0.30
-pandas==2.2.2
+psycopg2-binary==2.9.9
 xlrd==2.0.1
-numpy==1.26.4
