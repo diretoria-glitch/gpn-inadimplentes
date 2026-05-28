@@ -539,17 +539,17 @@ function sendWhatsApp(){
   const items=DATA.filter(d=>selIds.has(d._id));
   if(!items.length)return;
   const total=items.reduce((s,d)=>s+d.valor,0);
-  let msg='📋 *Títulos para Envio ao Cartório*\nR.A.I.S. Com. de Produtos Náuticos · Portal GPN\nGerado em '+todayBR()+'\n━━━━━━━━━━━━━━━━━━━━━━\n\n';
+  let msg='📋 *Títulos para Envio ao Cartório*\\nR.A.I.S. Com. de Produtos Náuticos · Portal GPN\\nGerado em '+todayBR()+'\\n━━━━━━━━━━━━━━━━━━━━━━\\n\\n';
   items.forEach((d,i)=>{
     const dias=Math.floor((TODAY-new Date(d.venc))/86400000);
     const diasStr=dias===1?'1 dia em atraso':dias+' dias em atraso';
     const notaStr=d.nota?'NF '+d.nota+'  ·  ':'';
     const obs=obsRaw(d);
-    msg+='*'+(i+1)+'. '+d.nome+'*\n   '+notaStr+'Venc: '+dtBR(d.venc)+'\n   '+diasStr+'  ·  '+brl(d.valor)+'\n';
-    if(obs)msg+='   _'+obs+'_\n';
-    msg+='\n';
+    msg+='*'+(i+1)+'. '+d.nome+'*\\n   '+notaStr+'Venc: '+dtBR(d.venc)+'\\n   '+diasStr+'  ·  '+brl(d.valor)+'\\n';
+    if(obs)msg+='   _'+obs+'_\\n';
+    msg+='\\n';
   });
-  msg+='━━━━━━━━━━━━━━━━━━━━━━\n*Total: '+brl(total)+'  ·  '+items.length+' título(s)*';
+  msg+='━━━━━━━━━━━━━━━━━━━━━━\\n*Total: '+brl(total)+'  ·  '+items.length+' título(s)*';
   window.open('https://wa.me/5524981882196?text='+encodeURIComponent(msg),'_blank');
 }
 
