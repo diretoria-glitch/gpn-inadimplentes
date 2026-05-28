@@ -664,7 +664,7 @@ def ping():
     import sys
     has_db = bool(os.environ.get('DATABASE_URL', ''))
     db_st  = 'OK' if engine else f'None | url_set={has_db} | err={_engine_error[:80]}'
-    count, qerr = 0, ''
+    count, qerr, join_err, sample = 0, '', '', []
     if engine:
         try:
             with engine.connect() as conn:
@@ -672,11 +672,24 @@ def ping():
                 count = int(r[0])
         except Exception as e:
             qerr = str(e)[:120]
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(text('''
+                    SELECT t.nome, t.venc::text, t.valor::float
+                    FROM titulos t
+                    LEFT JOIN observacoes o ON t.titulo_key = o.titulo_key
+                    ORDER BY t.venc ASC LIMIT 3
+                ''')).fetchall()
+                sample = [(r[0][:25], r[1], r[2]) for r in rows]
+        except Exception as e:
+            join_err = str(e)[:150]
     return (
         f'pong\npython={sys.version}\n'
         f'db={db_st}\n'
         f'titulos_no_banco={count}\n'
-        f'query_err={qerr}\n'
+        f'count_err={qerr}\n'
+        f'join_query_err={join_err}\n'
+        f'sample_3_rows={sample}\n'
     ), 200, {'Content-Type': 'text/plain'}
 
 
@@ -752,6 +765,7 @@ def upload():
 @app.route('/api/data')
 @login_required
 def api_data():
+    ensure_db()
     if not engine:
         return jsonify({'data': [], 'last_updated': None})
     try:
