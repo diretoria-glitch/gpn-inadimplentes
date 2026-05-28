@@ -1,8 +1,8 @@
 import os
-import re
 import ssl
 from datetime import date, datetime
 from functools import wraps
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import create_engine, text
@@ -14,31 +14,38 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
 APP_PASSWORD = os.environ.get('APP_PASSWORD', 'paraty2026')
 
-# ── Conexão com banco ─────────────────────────────────────────────────────────
+# ── Conexão com banco (totalmente defensiva — nunca trava o app) ──────────────
 
-_raw_url = os.environ.get('DATABASE_URL', '')
+engine = None
 
-if _raw_url:
-    # Converte para driver pg8000 (Python puro — sem binário nativo)
-    if _raw_url.startswith('postgres://'):
-        _raw_url = _raw_url.replace('postgres://', 'postgresql+pg8000://', 1)
-    elif _raw_url.startswith('postgresql://'):
-        _raw_url = _raw_url.replace('postgresql://', 'postgresql+pg8000://', 1)
+try:
+    _raw = os.environ.get('DATABASE_URL', '')
+    if _raw:
+        # Normaliza esquema para pg8000
+        if _raw.startswith('postgres://'):
+            _raw = 'postgresql+pg8000://' + _raw[len('postgres://'):]
+        elif _raw.startswith('postgresql://'):
+            _raw = 'postgresql+pg8000://' + _raw[len('postgresql://'):]
 
-    # pg8000 não aceita sslmode na URL — remove e usa ssl_context
-    _raw_url = re.sub(r'\?sslmode=[^&]*', '', _raw_url)
-    _raw_url = re.sub(r'&sslmode=[^&]*', '', _raw_url)
+        # Remove sslmode da query string (pg8000 usa ssl_context)
+        _parsed = urlparse(_raw)
+        _qs = {k: v for k, v in parse_qs(_parsed.query, keep_blank_values=True).items()
+               if k != 'sslmode'}
+        _clean_url = urlunparse(_parsed._replace(
+            query=urlencode({k: v[0] for k, v in _qs.items()})
+        ))
 
-    _ssl_ctx = ssl.create_default_context()
-    _ssl_ctx.check_hostname = False
-    _ssl_ctx.verify_mode = ssl.CERT_NONE
+        _ssl_ctx = ssl.create_default_context()
+        _ssl_ctx.check_hostname = False
+        _ssl_ctx.verify_mode = ssl.CERT_NONE
 
-    engine = create_engine(
-        _raw_url,
-        poolclass=NullPool,
-        connect_args={'ssl_context': _ssl_ctx}
-    )
-else:
+        engine = create_engine(
+            _clean_url,
+            poolclass=NullPool,
+            connect_args={'ssl_context': _ssl_ctx}
+        )
+except Exception as _e:
+    print(f'[ENGINE INIT ERROR] {_e}')
     engine = None
 
 _db_ready = False
@@ -90,6 +97,21 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
+
+
+# ── Diagnóstico (remover após confirmar funcionamento) ────────────────────────
+
+@app.route('/ping')
+def ping():
+    import sys
+    db_status = 'engine OK' if engine else 'engine None'
+    tmpl_folder = app.template_folder
+    return (
+        f'pong\n'
+        f'python={sys.version}\n'
+        f'db={db_status}\n'
+        f'templates={tmpl_folder}\n'
+    ), 200, {'Content-Type': 'text/plain'}
 
 
 # ── Rotas ─────────────────────────────────────────────────────────────────────
