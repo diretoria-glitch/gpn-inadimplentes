@@ -1,4 +1,6 @@
 import os
+import re
+import ssl
 from datetime import date, datetime
 from functools import wraps
 
@@ -12,11 +14,32 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
 APP_PASSWORD = os.environ.get('APP_PASSWORD', 'paraty2026')
 
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
-if DATABASE_URL.startswith('postgres://'):
-    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+# ── Conexão com banco ─────────────────────────────────────────────────────────
 
-engine = create_engine(DATABASE_URL, poolclass=NullPool) if DATABASE_URL else None
+_raw_url = os.environ.get('DATABASE_URL', '')
+
+if _raw_url:
+    # Converte para driver pg8000 (Python puro — sem binário nativo)
+    if _raw_url.startswith('postgres://'):
+        _raw_url = _raw_url.replace('postgres://', 'postgresql+pg8000://', 1)
+    elif _raw_url.startswith('postgresql://'):
+        _raw_url = _raw_url.replace('postgresql://', 'postgresql+pg8000://', 1)
+
+    # pg8000 não aceita sslmode na URL — remove e usa ssl_context
+    _raw_url = re.sub(r'\?sslmode=[^&]*', '', _raw_url)
+    _raw_url = re.sub(r'&sslmode=[^&]*', '', _raw_url)
+
+    _ssl_ctx = ssl.create_default_context()
+    _ssl_ctx.check_hostname = False
+    _ssl_ctx.verify_mode = ssl.CERT_NONE
+
+    engine = create_engine(
+        _raw_url,
+        poolclass=NullPool,
+        connect_args={'ssl_context': _ssl_ctx}
+    )
+else:
+    engine = None
 
 _db_ready = False
 
@@ -190,23 +213,20 @@ def api_obs():
     return jsonify({'ok': True})
 
 
-# ── Parser XLS (usa xlrd diretamente — sem pandas/numpy) ─────────────────────
+# ── Parser XLS (xlrd puro — sem pandas/numpy) ─────────────────────────────────
 
 def parse_xls(file_obj):
     import xlrd
 
-    data = file_obj.read()
-    wb = xlrd.open_workbook(file_contents=data)
+    wb = xlrd.open_workbook(file_contents=file_obj.read())
     ws = wb.sheet_by_index(0)
 
     def getv(row_vals, idx):
-        """Retorna o valor da célula ou None se vazio."""
         if idx >= len(row_vals):
             return None
         v = row_vals[idx]
         if v == '' or v is None:
             return None
-        # xlrd representa datas como float; strings 'nan'/'None' não ocorrem
         return v
 
     records = []
@@ -220,7 +240,6 @@ def parse_xls(file_obj):
         v0_raw = getv(vals, 0)
         v0 = str(v0_raw) if v0_raw is not None else 'None'
 
-        # Linha de vencimento
         if v0 == 'Vencimento:':
             raw = getv(vals, 3)
             if isinstance(raw, float):
@@ -230,7 +249,6 @@ def parse_xls(file_obj):
             i += 1
             continue
 
-        # Linhas de cabeçalho / rodapé a ignorar
         skip = {'Cliente', 'Empresa:', 'Filial:', 'Vendedor:', 'Data Inicial:',
                 'Conta Bancária:', 'Recebíveis em Aberto por Vencimento', 'nan', 'None'}
         if v0 in skip or not v0.strip() or v0.startswith('Tipo:'):
@@ -247,7 +265,6 @@ def parse_xls(file_obj):
             i += 1
             continue
 
-        # Nome do cliente (pode continuar em linhas seguintes)
         nome = str(getv(vals, 1)).strip() if getv(vals, 1) else ''
         j = i + 1
         while j < len(all_rows):
@@ -265,11 +282,9 @@ def parse_xls(file_obj):
             j += 1
         nome = ' '.join(nome.split())
 
-        # Nota fiscal
         nota_raw = str(getv(vals, 10)).strip() if getv(vals, 10) else ''
         nota = '' if nota_raw in ('0', '0.0') else nota_raw
 
-        # Data de vencimento
         if hasattr(current_venc, 'strftime'):
             venc_str = current_venc.strftime('%Y-%m-%d')
         else:
