@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Portal GPN</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: #0A1E38; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.card { background: #fff; border-radius: 20px; padding: 48px 40px; width: 100%; max-width: 400px; box-shadow: 0 24px 64px rgba(0,0,0,.45); }
+.eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: #7A9ABF; margin-bottom: 12px; }
+.title { font-size: 30px; font-weight: 300; color: #0A1E38; letter-spacing: -.02em; margin-bottom: 4px; }
+.title strong { font-weight: 600; }
+.subtitle { font-size: 13px; color: #A0B4C8; margin-bottom: 36px; }
+.label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: #4A7AAF; margin-bottom: 8px; }
+.input { width: 100%; padding: 13px 16px; border: 1.5px solid #D4E2F0; border-radius: 10px; font-family: 'Inter', sans-serif; font-size: 15px; color: #0A1E38; outline: none; transition: border-color .15s; }
+.input:focus { border-color: #1A5FAA; }
+.btn { width: 100%; margin-top: 20px; padding: 14px; background: #1A5FAA; color: #fff; border: none; border-radius: 10px; font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; transition: background .15s; }
+.btn:hover { background: #1350A0; }
+.error { margin-top: 16px; padding: 11px 14px; background: #FDECEA; border-radius: 8px; color: #B71C1C; font-size: 13px; text-align: center; border: 1px solid #FFCDD2; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="eyebrow">Portal GPN · R.A.I.S. Náutica</div>
+  <h1 class="title"><strong>Inadimplentes</strong></h1>
+  <p class="subtitle">Acesso restrito — uso interno</p>
+  <form method="POST" autocomplete="on">
+    <label class="label" for="pwd">Senha de acesso</label>
+    <input class="input" type="password" id="pwd" name="password"
+           placeholder="••••••••" autocomplete="current-password" required autofocus>
+    <button class="btn" type="submit">Entrar</button>
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+  </form>
+</div>
+</body>
+</html>

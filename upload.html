@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atualizar Dados — Portal GPN</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: #F4F7FB; color: #0F1E35; min-height: 100vh; }
+.shell { max-width: 640px; margin: 0 auto; padding: 56px 40px 80px; }
+.back { font-size: 13px; color: #7A9ABF; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 32px; transition: color .15s; }
+.back:hover { color: #1A5FAA; }
+.header-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: #4A7AAF; margin-bottom: 10px; }
+.title { font-size: 30px; font-weight: 300; color: #0A1E38; letter-spacing: -.02em; margin-bottom: 28px; }
+.title strong { font-weight: 600; }
+.card { background: #fff; border: 1px solid #D4E2F0; border-radius: 16px; padding: 32px; }
+.label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: #4A7AAF; margin-bottom: 12px; }
+.drop-area {
+  border: 2px dashed #C8DAF0; border-radius: 12px; padding: 44px 24px;
+  text-align: center; cursor: pointer; transition: all .2s; background: #F8FAFD;
+}
+.drop-area:hover, .drop-area.dragover { border-color: #1A5FAA; background: #EBF3FB; }
+.drop-icon { font-size: 38px; margin-bottom: 12px; }
+.drop-text { font-size: 14px; color: #4A7AAF; font-weight: 500; margin-bottom: 6px; }
+.drop-hint { font-size: 12px; color: #A0B4C8; }
+.file-name { margin-top: 12px; font-family: 'DM Mono', monospace; font-size: 12px; color: #1A5FAA; min-height: 18px; }
+input[type="file"] { display: none; }
+.btn { width: 100%; margin-top: 20px; padding: 14px; background: #1A5FAA; color: #fff; border: none; border-radius: 10px; font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; transition: background .15s; }
+.btn:hover:not(:disabled) { background: #1350A0; }
+.btn:disabled { background: #C8DAF0; color: #EBF3FB; cursor: not-allowed; }
+.msg-ok  { margin-top: 20px; padding: 14px 16px; background: #E8F5E9; border: 1px solid #A5D6A7; border-radius: 10px; color: #1B5E20; font-size: 14px; font-weight: 500; }
+.msg-err { margin-top: 20px; padding: 14px 16px; background: #FDECEA; border: 1px solid #FFCDD2; border-radius: 10px; color: #B71C1C; font-size: 14px; }
+.rules { margin-top: 28px; padding-top: 24px; border-top: 1px solid #EEF4FB; }
+.rules-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .12em; color: #7A9ABF; margin-bottom: 10px; }
+.rules ul { list-style: none; }
+.rules li { font-size: 13px; color: #4A7AAF; line-height: 1.9; padding-left: 14px; position: relative; }
+.rules li::before { content: '·'; position: absolute; left: 0; color: #A0B4C8; }
+@media (max-width: 600px) { .shell { padding: 32px 16px 60px; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <a class="back" href="/dashboard">← Voltar ao dashboard</a>
+  <div class="header-eyebrow">Portal GPN · R.A.I.S. Náutica</div>
+  <h1 class="title"><strong>Atualizar</strong> dados</h1>
+
+  <div class="card">
+    <label class="label">Planilha de inadimplentes (.XLS)</label>
+
+    <form method="POST" enctype="multipart/form-data" id="form-upload">
+      <div class="drop-area" id="drop-area">
+        <div class="drop-icon">📂</div>
+        <div class="drop-text">Clique para selecionar ou arraste o arquivo</div>
+        <div class="drop-hint">Apenas arquivos .XLS exportados do IdealSoft · Shop Control 9</div>
+        <div class="file-name" id="file-name"></div>
+      </div>
+      <input type="file" id="file-input" name="file" accept=".xls">
+      <button class="btn" type="submit" id="btn-submit" disabled>Importar dados</button>
+    </form>
+
+    {% if message %}
+    <div class="msg-ok">✓ {{ message }}</div>
+    {% endif %}
+    {% if error %}
+    <div class="msg-err">⚠ {{ error }}</div>
+    {% endif %}
+
+    <div class="rules">
+      <div class="rules-title">Lembrete de exportação</div>
+      <ul>
+        <li>Relatório: <strong>Recebíveis em Aberto por Vencimento</strong></li>
+        <li>Formato <strong>.XLS</strong> — nunca converter para .XLSX</li>
+        <li>Filial: <strong>9 — FILIAL ILHA 3</strong></li>
+        <li>As observações salvas <strong>não são apagadas</strong> na importação</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const fileInput = document.getElementById('file-input');
+const fileName  = document.getElementById('file-name');
+const btnSubmit = document.getElementById('btn-submit');
+const dropArea  = document.getElementById('drop-area');
+
+dropArea.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', function () {
+  if (this.files[0]) {
+    fileName.textContent = '📄 ' + this.files[0].name;
+    btnSubmit.disabled = false;
+  }
+});
+
+dropArea.addEventListener('dragover',  e => { e.preventDefault(); dropArea.classList.add('dragover'); });
+dropArea.addEventListener('dragleave', ()  => dropArea.classList.remove('dragover'));
+dropArea.addEventListener('drop', e => {
+  e.preventDefault();
+  dropArea.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    fileInput.files     = dt.files;
+    fileName.textContent = '📄 ' + f.name;
+    btnSubmit.disabled   = false;
+  }
+});
+</script>
+</body>
+</html>
