@@ -1,9 +1,7 @@
 import os
-import numpy as np
 from datetime import date, datetime
 from functools import wraps
 
-import pandas as pd
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
@@ -20,44 +18,44 @@ if DATABASE_URL.startswith('postgres://'):
 
 engine = create_engine(DATABASE_URL, poolclass=NullPool) if DATABASE_URL else None
 
+_db_ready = False
 
 # ── Banco de dados ────────────────────────────────────────────────────────────
 
-def init_db():
-    with engine.connect() as conn:
-        conn.execute(text('''
-            CREATE TABLE IF NOT EXISTS titulos (
-                id          SERIAL PRIMARY KEY,
-                nome        TEXT    NOT NULL,
-                venc        DATE    NOT NULL,
-                nota        TEXT    DEFAULT '',
-                valor       NUMERIC(12,2) NOT NULL,
-                titulo_key  TEXT    UNIQUE NOT NULL
-            )
-        '''))
-        conn.execute(text('''
-            CREATE TABLE IF NOT EXISTS observacoes (
-                id          SERIAL PRIMARY KEY,
-                titulo_key  TEXT    NOT NULL UNIQUE,
-                obs_text    TEXT    NOT NULL,
-                updated_at  TIMESTAMP DEFAULT NOW()
-            )
-        '''))
-        conn.execute(text('''
-            CREATE TABLE IF NOT EXISTS meta (
-                key   TEXT PRIMARY KEY,
-                value TEXT
-            )
-        '''))
-        conn.commit()
-
-
-try:
-    if engine:
-        with app.app_context():
-            init_db()
-except Exception as e:
-    print(f'[AVISO] Inicialização do banco: {e}')
+def ensure_db():
+    global _db_ready
+    if _db_ready or not engine:
+        return
+    try:
+        with engine.connect() as conn:
+            conn.execute(text('''
+                CREATE TABLE IF NOT EXISTS titulos (
+                    id          SERIAL PRIMARY KEY,
+                    nome        TEXT    NOT NULL,
+                    venc        DATE    NOT NULL,
+                    nota        TEXT    DEFAULT '',
+                    valor       NUMERIC(12,2) NOT NULL,
+                    titulo_key  TEXT    UNIQUE NOT NULL
+                )
+            '''))
+            conn.execute(text('''
+                CREATE TABLE IF NOT EXISTS observacoes (
+                    id          SERIAL PRIMARY KEY,
+                    titulo_key  TEXT    NOT NULL UNIQUE,
+                    obs_text    TEXT    NOT NULL,
+                    updated_at  TIMESTAMP DEFAULT NOW()
+                )
+            '''))
+            conn.execute(text('''
+                CREATE TABLE IF NOT EXISTS meta (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            '''))
+            conn.commit()
+        _db_ready = True
+    except Exception as e:
+        print(f'[DB] {e}')
 
 
 # ── Autenticação ──────────────────────────────────────────────────────────────
@@ -70,6 +68,8 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+
+# ── Rotas ─────────────────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
@@ -94,17 +94,17 @@ def logout():
     return redirect(url_for('login'))
 
 
-# ── Páginas ───────────────────────────────────────────────────────────────────
-
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    ensure_db()
     return render_template('dashboard.html', today=date.today().isoformat())
 
 
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
 def upload():
+    ensure_db()
     message = error = None
 
     if request.method == 'POST':
@@ -141,6 +141,9 @@ def upload():
 @app.route('/api/data')
 @login_required
 def api_data():
+    ensure_db()
+    if not engine:
+        return jsonify({'data': [], 'last_updated': None})
     with engine.connect() as conn:
         rows = conn.execute(text('''
             SELECT t.nome, t.venc::text, t.nota, t.valor::float, t.titulo_key,
@@ -164,6 +167,7 @@ def api_data():
 @app.route('/api/obs', methods=['POST'])
 @login_required
 def api_obs():
+    ensure_db()
     body    = request.get_json(force=True)
     key     = body.get('key', '').strip()
     obs_val = (body.get('obs') or '').strip()
@@ -186,9 +190,12 @@ def api_obs():
     return jsonify({'ok': True})
 
 
-# ── Parser XLS ────────────────────────────────────────────────────────────────
+# ── Parser XLS (pandas importado aqui — lazy, não atrasa o cold start) ────────
 
 def parse_xls(file_obj):
+    import pandas as pd
+    import numpy as np
+
     df = pd.read_excel(file_obj, engine='xlrd', header=None)
 
     def getv(vals, idx):
@@ -252,7 +259,7 @@ def parse_xls(file_obj):
         else:
             venc_str = str(current_venc)[:10]
 
-        valor_f   = float(valor) if valor is not None else 0.0
+        valor_f    = float(valor) if valor is not None else 0.0
         titulo_key = f'{nome}|{venc_str}|{valor_f}'
 
         records.append({'nome': nome, 'venc': venc_str, 'nota': nota,
