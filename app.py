@@ -196,7 +196,7 @@ input[type="file"]{display:none}
       <ul>
         <li>Relatório: <strong>Recebíveis em Aberto por Vencimento</strong></li>
         <li>Formato <strong>.XLS</strong> — nunca converter para .XLSX</li>
-        <li>Filial: <strong>9 — FILIAL ILHA 3</strong></li>
+        <li>Portal: <strong>Portal GPN</strong></li>
         <li>As observações salvas <strong>não são apagadas</strong> na importação</li>
       </ul>
     </div>
