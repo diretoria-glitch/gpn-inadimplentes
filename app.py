@@ -190,40 +190,50 @@ def api_obs():
     return jsonify({'ok': True})
 
 
-# ── Parser XLS (pandas importado aqui — lazy, não atrasa o cold start) ────────
+# ── Parser XLS (usa xlrd diretamente — sem pandas/numpy) ─────────────────────
 
 def parse_xls(file_obj):
-    import pandas as pd
-    import numpy as np
+    import xlrd
 
-    df = pd.read_excel(file_obj, engine='xlrd', header=None)
+    data = file_obj.read()
+    wb = xlrd.open_workbook(file_contents=data)
+    ws = wb.sheet_by_index(0)
 
-    def getv(vals, idx):
-        v = vals[idx] if idx < len(vals) else None
-        if v is None or (isinstance(v, float) and np.isnan(v)):
+    def getv(row_vals, idx):
+        """Retorna o valor da célula ou None se vazio."""
+        if idx >= len(row_vals):
             return None
-        if str(v) in ('nan', 'NaT'):
+        v = row_vals[idx]
+        if v == '' or v is None:
             return None
+        # xlrd representa datas como float; strings 'nan'/'None' não ocorrem
         return v
 
     records = []
     current_venc = None
-    all_rows = list(df.iterrows())
+    all_rows = [ws.row_values(i) for i in range(ws.nrows)]
     i = 0
 
     while i < len(all_rows):
-        _, row = all_rows[i]
-        vals = row.tolist()
+        vals = all_rows[i]
 
-        if str(getv(vals, 0)) == 'Vencimento:':
-            current_venc = vals[3]
+        v0_raw = getv(vals, 0)
+        v0 = str(v0_raw) if v0_raw is not None else 'None'
+
+        # Linha de vencimento
+        if v0 == 'Vencimento:':
+            raw = getv(vals, 3)
+            if isinstance(raw, float):
+                current_venc = xlrd.xldate_as_datetime(raw, wb.datemode)
+            else:
+                current_venc = raw
             i += 1
             continue
 
+        # Linhas de cabeçalho / rodapé a ignorar
         skip = {'Cliente', 'Empresa:', 'Filial:', 'Vendedor:', 'Data Inicial:',
                 'Conta Bancária:', 'Recebíveis em Aberto por Vencimento', 'nan', 'None'}
-        v0 = str(getv(vals, 0)) if getv(vals, 0) is not None else 'None'
-        if v0 in skip or v0.startswith('Tipo:'):
+        if v0 in skip or not v0.strip() or v0.startswith('Tipo:'):
             i += 1
             continue
         if str(getv(vals, 17)) == 'Total:':
@@ -237,27 +247,33 @@ def parse_xls(file_obj):
             i += 1
             continue
 
+        # Nome do cliente (pode continuar em linhas seguintes)
         nome = str(getv(vals, 1)).strip() if getv(vals, 1) else ''
         j = i + 1
         while j < len(all_rows):
-            _, jrow = all_rows[j]
-            jvals = jrow.tolist()
-            if str(getv(jvals, 17)) == 'Total:': break
-            if str(getv(jvals, 0)) in ('Vencimento:', 'Cliente'): break
-            if getv(jvals, 8) is not None: break
+            jvals = all_rows[j]
+            if str(getv(jvals, 17)) == 'Total:':
+                break
+            j0 = str(getv(jvals, 0)) if getv(jvals, 0) is not None else ''
+            if j0 in ('Vencimento:', 'Cliente'):
+                break
+            if getv(jvals, 8) is not None:
+                break
             cont = getv(jvals, 1)
             if cont is not None:
                 nome = (nome + ' ' + str(cont).strip()).strip()
             j += 1
         nome = ' '.join(nome.split())
 
+        # Nota fiscal
         nota_raw = str(getv(vals, 10)).strip() if getv(vals, 10) else ''
-        nota = '' if nota_raw == '0' else nota_raw
+        nota = '' if nota_raw in ('0', '0.0') else nota_raw
 
+        # Data de vencimento
         if hasattr(current_venc, 'strftime'):
             venc_str = current_venc.strftime('%Y-%m-%d')
         else:
-            venc_str = str(current_venc)[:10]
+            venc_str = str(current_venc)[:10] if current_venc else '2000-01-01'
 
         valor_f    = float(valor) if valor is not None else 0.0
         titulo_key = f'{nome}|{venc_str}|{valor_f}'
