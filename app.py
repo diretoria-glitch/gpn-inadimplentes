@@ -260,8 +260,8 @@ body{font-family:'Inter',sans-serif;background:#F4F7FB;color:#0F1E35;min-height:
 .table-meta{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
 .table-meta-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:#4A7AAF}
 .table-meta-count{font-family:'DM Mono',monospace;font-size:11px;color:#7A9ABF}
-.table-wrap{background:#fff;border:1px solid #D4E2F0;border-radius:14px;overflow:hidden}
-table{width:100%;border-collapse:collapse}
+.table-wrap{background:#fff;border:1px solid #D4E2F0;border-radius:14px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;min-width:640px}
 thead tr{background:#EBF3FB;border-bottom:1px solid #D4E2F0}
 thead th{padding:11px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#4A7AAF;text-align:left;white-space:nowrap}
 thead th.right{text-align:right}
@@ -298,7 +298,7 @@ tbody td.obs-col{white-space:normal}
 .obs-note{background:#F3E8FF;color:#5B21B6;border-color:#C4B5FD}
 .obs-auth:hover,.obs-hold:hover,.obs-sent:hover,.obs-note:hover{filter:brightness(.95)}
 .obs-text{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
-.obs-editor{position:fixed;width:310px;background:#fff;border:1px solid #D4E2F0;border-radius:14px;box-shadow:0 8px 40px rgba(10,30,56,.18);padding:16px;z-index:999;display:none}
+.obs-editor{position:fixed;width:310px;max-width:calc(100vw - 24px);background:#fff;border:1px solid #D4E2F0;border-radius:14px;box-shadow:0 8px 40px rgba(10,30,56,.18);padding:16px;z-index:999;display:none}
 .obs-editor-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:#7A9ABF;margin-bottom:12px}
 .obs-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .obs-chip{font-size:11px;padding:4px 10px;border-radius:99px;cursor:pointer;font-family:'Inter',sans-serif;transition:all .12s;border:1px solid;background:transparent}
@@ -327,11 +327,32 @@ tbody td.obs-col{white-space:normal}
 .btn-wpp{background:#25D366;color:#fff;border:none;padding:12px 24px;border-radius:8px;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .15s;white-space:nowrap}
 .btn-wpp:hover{background:#1DAF56}
 @media(max-width:768px){
-  .shell{padding:24px 16px 60px}
-  .kpi-row{grid-template-columns:1fr}
-  .header{flex-direction:column;align-items:flex-start}
-  .sel-bar{padding:12px 16px;flex-direction:column;gap:12px;align-items:stretch}
+  .shell{padding:20px 14px 80px}
+  .header{flex-direction:column;align-items:flex-start;gap:10px;padding-bottom:16px;margin-bottom:20px}
+  .header-title{font-size:26px}
+  .header-nav{width:100%;flex-wrap:wrap;gap:6px}
+  .nav-btn{font-size:12px;padding:8px 14px}
+  .kpi-row{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+  .kpi{padding:16px 18px}
+  .kpi-value{font-size:22px}
+  .ano-row{margin-bottom:20px;gap:6px}
+  .cb-input{width:18px;height:18px}
+  .obs-trigger{min-height:30px}
+  .sel-bar{padding:12px 14px;flex-direction:column;gap:10px;align-items:stretch}
   .sel-actions{justify-content:flex-end}
+  .btn-wpp{font-size:13px;padding:10px 16px}
+  .btn-clear{padding:8px 16px;font-size:12px}
+  .sel-count{font-size:20px}
+}
+@media(max-width:480px){
+  .kpi-row{grid-template-columns:1fr}
+  .header-title{font-size:22px}
+  .kpi-value{font-size:24px}
+  thead th,tbody td{padding:9px 8px;font-size:11px}
+  .td-nome{font-size:12px}
+  .td-val{font-size:12px}
+  .badge,.c-urgente,.c-protestar,.c-cartorio{font-size:10px;padding:2px 8px}
+  .obs-editor{left:12px !important;width:calc(100vw - 24px)}
 }
 </style>
 </head>
@@ -460,11 +481,11 @@ function openObs(d,anchorEl){
   clr.style.display=obsRaw(d)?'':'none';
   document.getElementById('chip-sent').dataset.text='📬 Enviado ao cartório em '+todayBR();
   const rect=anchorEl.getBoundingClientRect();
-  const W=310,H=240;
+  const W=Math.min(310,window.innerWidth-24),H=260;
   let left=rect.left,top=rect.bottom+6;
   if(left+W>window.innerWidth-12)left=window.innerWidth-W-12;
   if(left<8)left=8;
-  if(top+H>window.innerHeight-8)top=rect.top-H-6;
+  if(top+H>window.innerHeight-8)top=Math.max(8,rect.top-H-6);
   ed.style.left=left+'px';ed.style.top=top+'px';
   ed.style.display='block';ta.focus();
 }
