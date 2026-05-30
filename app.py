@@ -477,20 +477,23 @@ async function saveObs(){
   const btn=document.getElementById('obs-save-btn');
   btn.disabled=true;
   try{
-    await fetch('/api/obs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,obs:val})});
+    const resp=await fetch('/api/obs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,obs:val})});
+    if(!resp.ok){const t=await resp.text();throw new Error('Servidor retornou '+resp.status+': '+t.slice(0,120));}
     const item=DATA.find(x=>x.key===key);
     if(item)item.obs=val;
-  }catch(e){alert('Erro ao salvar.');btn.disabled=false;return;}
+  }catch(e){alert('Erro ao salvar: '+e.message);btn.disabled=false;return;}
+  btn.disabled=false;
   closeObs();render();
 }
 async function clearObsEntry(){
   if(!activeObsKey)return;
   const key=activeObsKey;
   try{
-    await fetch('/api/obs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,obs:''})});
+    const resp=await fetch('/api/obs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,obs:''})});
+    if(!resp.ok){const t=await resp.text();throw new Error('Servidor retornou '+resp.status+': '+t.slice(0,120));}
     const item=DATA.find(x=>x.key===key);
     if(item)item.obs='';
-  }catch(e){alert('Erro ao limpar.');return;}
+  }catch(e){alert('Erro ao limpar: '+e.message);return;}
   closeObs();render();
 }
 
@@ -792,23 +795,31 @@ def api_data():
 @login_required
 def api_obs():
     ensure_db()
-    body    = request.get_json(force=True)
+    if not engine:
+        return jsonify({'ok': False, 'error': 'banco indisponível'}), 503
+    body = request.get_json(force=True)
+    if not body:
+        return jsonify({'ok': False, 'error': 'corpo JSON inválido'}), 400
     key     = body.get('key', '').strip()
     obs_val = (body.get('obs') or '').strip()
     if not key:
         return jsonify({'ok': False, 'error': 'key obrigatório'}), 400
-    with engine.connect() as conn:
-        if obs_val:
-            conn.execute(text('''
-                INSERT INTO observacoes (titulo_key, obs_text, updated_at)
-                VALUES (:key, :obs, NOW())
-                ON CONFLICT (titulo_key) DO UPDATE
-                SET obs_text=:obs, updated_at=NOW()
-            '''), {'key': key, 'obs': obs_val})
-        else:
-            conn.execute(text('DELETE FROM observacoes WHERE titulo_key=:key'), {'key': key})
-        conn.commit()
-    return jsonify({'ok': True})
+    try:
+        with engine.connect() as conn:
+            if obs_val:
+                conn.execute(text('''
+                    INSERT INTO observacoes (titulo_key, obs_text, updated_at)
+                    VALUES (:key, :obs, NOW())
+                    ON CONFLICT (titulo_key) DO UPDATE
+                    SET obs_text=:obs, updated_at=NOW()
+                '''), {'key': key, 'obs': obs_val})
+            else:
+                conn.execute(text('DELETE FROM observacoes WHERE titulo_key=:key'), {'key': key})
+            conn.commit()
+        return jsonify({'ok': True})
+    except Exception as e:
+        print(f'[API/OBS] {e}')
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 # ── Parser XLS ────────────────────────────────────────────────────────────────
