@@ -62,8 +62,12 @@ def ensure_db():
                     venc       DATE    NOT NULL,
                     nota       TEXT    DEFAULT '',
                     valor      NUMERIC(12,2) NOT NULL,
-                    titulo_key TEXT    UNIQUE NOT NULL
+                    titulo_key TEXT    UNIQUE NOT NULL,
+                    filial     TEXT    NOT NULL DEFAULT 'Portal GPN'
                 )'''))
+            conn.execute(text(
+                "ALTER TABLE titulos ADD COLUMN IF NOT EXISTS filial TEXT NOT NULL DEFAULT 'Portal GPN'"
+            ))
             conn.execute(text('''
                 CREATE TABLE IF NOT EXISTS observacoes (
                     id         SERIAL PRIMARY KEY,
@@ -180,6 +184,11 @@ input[type="file"]{display:none}
   <div class="card">
     <label class="label">Planilha de inadimplentes (.XLS)</label>
     <form method="POST" enctype="multipart/form-data" id="form-upload">
+      <label class="label">Filial / Portal</label>
+      <input class="input" type="text" name="filial" id="filial-input"
+             placeholder="Ex: Portal GPN" required autocomplete="off"
+             style="margin-bottom:20px" list="filial-list">
+      <datalist id="filial-list"><option value="Portal GPN"></datalist>
       <div class="drop-area" id="drop-area">
         <div class="drop-icon">📂</div>
         <div class="drop-text">Clique para selecionar ou arraste o arquivo</div>
@@ -257,9 +266,13 @@ body{font-family:'Inter',sans-serif;background:#F4F7FB;color:#0F1E35;min-height:
 .kpi-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:#7A9ABF;margin-bottom:10px}
 .kpi-value{font-family:'DM Mono',monospace;font-size:28px;font-weight:400;color:#1A5FAA;line-height:1;margin-bottom:6px}
 .kpi-hint{font-size:12px;color:#7A9ABF}
-.table-meta{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
-.table-meta-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:#4A7AAF}
-.table-meta-count{font-family:'DM Mono',monospace;font-size:11px;color:#7A9ABF}
+.table-meta{display:flex;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap}
+.table-meta-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:#4A7AAF;white-space:nowrap}
+.table-meta-count{font-family:'DM Mono',monospace;font-size:11px;color:#7A9ABF;white-space:nowrap;margin-left:auto}
+.search-wrap{flex:1;min-width:140px;max-width:260px}
+.search-input{width:100%;padding:7px 12px;border:1.5px solid #D4E2F0;border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;color:#0F1E35;outline:none;transition:border-color .15s;background:#fff}
+.search-input:focus{border-color:#1A5FAA}
+.search-input::placeholder{color:#B0C4D8}
 .table-wrap{background:#fff;border:1px solid #D4E2F0;border-radius:14px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;min-width:640px}
 thead tr{background:#EBF3FB;border-bottom:1px solid #D4E2F0}
@@ -377,6 +390,7 @@ tbody td.obs-col{white-space:normal}
     <button class="ano-btn" data-a="2025">2025</button>
     <button class="ano-btn" data-a="2026">2026</button>
   </div>
+  <div class="ano-row" id="filial-row" style="display:none"></div>
   <div class="kpi-row">
     <div class="kpi">
       <div class="kpi-label">Total em aberto</div>
@@ -396,6 +410,9 @@ tbody td.obs-col{white-space:normal}
   </div>
   <div class="table-meta">
     <span class="table-meta-title">Títulos em aberto</span>
+    <div class="search-wrap">
+      <input class="search-input" id="search-input" type="search" placeholder="🔍  Buscar cliente..." autocomplete="off">
+    </div>
     <span class="table-meta-count" id="table-count">—</span>
   </div>
   <div class="table-wrap">
@@ -455,6 +472,8 @@ tbody td.obs-col{white-space:normal}
 <script>
 let DATA=[];
 let fAno='Todos';
+let fFilial='Todas';
+let fBusca='';
 const TODAY=new Date('{{ today }}');
 TODAY.setHours(12,0,0,0);
 const brl=v=>'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -595,15 +614,39 @@ function cartorio(d){
   return'<span style="color:#C8DAF0">—</span>';
 }
 
+function buildFilialBtns(){
+  const filiais=[...new Set(DATA.map(d=>d.filial||'Portal GPN'))].sort();
+  const row=document.getElementById('filial-row');
+  if(filiais.length<=1){row.style.display='none';return;}
+  row.innerHTML='<span class="ano-label">FILIAL</span>';
+  ['Todas',...filiais].forEach(f=>{
+    const btn=document.createElement('button');
+    btn.className='ano-btn'+(fFilial===f?' active':'');
+    btn.dataset.f=f;btn.textContent=f;
+    btn.addEventListener('click',()=>{
+      row.querySelectorAll('.ano-btn').forEach(x=>x.classList.remove('active'));
+      btn.classList.add('active');fFilial=f;render();
+    });
+    row.appendChild(btn);
+  });
+  row.style.display='flex';
+}
+
 function render(){
   closeObs();
-  const rows=DATA.filter(d=>fAno==='Todos'||d.venc.slice(0,4)===fAno);
+  let rows=DATA.filter(d=>fAno==='Todos'||d.venc.slice(0,4)===fAno);
+  if(fFilial!=='Todas')rows=rows.filter(d=>(d.filial||'Portal GPN')===fFilial);
+  const q=fBusca.trim().toLowerCase();
+  if(q)rows=rows.filter(d=>d.nome.toLowerCase().includes(q));
   const total=rows.reduce((s,d)=>s+d.valor,0);
-  const clientes=new Set(rows.map(d=>d.nome)).size;
+  const clienteSet=new Set(rows.map(d=>d.nome));
   document.getElementById('kpi-total').textContent=brl(total);
-  document.getElementById('kpi-hint').textContent=rows.length+' títulos';
-  document.getElementById('kpi-clientes').textContent=clientes;
-  document.getElementById('table-count').textContent=rows.length+' registros';
+  document.getElementById('kpi-hint').textContent=rows.length+' título'+(rows.length!==1?'s':'');
+  document.getElementById('kpi-clientes').textContent=clienteSet.size;
+  let countTxt=rows.length+' registro'+(rows.length!==1?'s':'');
+  if(q&&clienteSet.size===1)countTxt=rows.length+' parcela'+(rows.length!==1?'s':'')+' · '+[...clienteSet][0];
+  else if(q&&clienteSet.size>1)countTxt=rows.length+' registro'+(rows.length!==1?'s':'')+' · '+clienteSet.size+' clientes';
+  document.getElementById('table-count').textContent=countTxt;
   const jaEnviado=d=>obsRaw(d).toLowerCase().includes('enviado');
   const nProtestar=rows.filter(d=>{const x=Math.floor((TODAY-new Date(d.venc))/86400000);return!jaEnviado(d)&&x>=30&&x<45;}).length;
   const nUrgente=rows.filter(d=>{const x=Math.floor((TODAY-new Date(d.venc))/86400000);return!jaEnviado(d)&&x>=45&&x<60;}).length;
@@ -654,12 +697,17 @@ document.querySelectorAll('.ano-btn').forEach(b=>b.addEventListener('click',()=>
   b.classList.add('active');fAno=b.dataset.a;render();
 }));
 
+document.getElementById('search-input').addEventListener('input',function(){
+  fBusca=this.value;render();
+});
+
 async function loadData(){
   try{
     const resp=await fetch('/api/data');
     if(resp.status===401){window.location.href='/login';return;}
     const json=await resp.json();
     DATA=json.data;DATA.forEach((d,i)=>d._id=i);
+    buildFilialBtns();
     const lu=document.getElementById('last-updated');
     lu.textContent=json.last_updated?'Atualizado em '+json.last_updated:'dados não importados ainda';
     if(!DATA.length){
@@ -757,19 +805,21 @@ def upload():
 
     if request.method == 'POST':
         f = request.files.get('file')
+        filial = request.form.get('filial', '').strip() or 'Portal GPN'
         if not f or not f.filename.lower().endswith('.xls'):
             error = 'Envie um arquivo .XLS válido (exportado do IdealSoft).'
         else:
             try:
                 records = parse_xls(f)
                 with engine.connect() as conn:
-                    conn.execute(text('TRUNCATE TABLE titulos'))
+                    conn.execute(text('DELETE FROM titulos WHERE filial=:f'), {'f': filial})
                     for r in records:
+                        r['filial'] = filial
                         conn.execute(text('''
-                            INSERT INTO titulos (nome, venc, nota, valor, titulo_key)
-                            VALUES (:nome, :venc, :nota, :valor, :key)
+                            INSERT INTO titulos (nome, venc, nota, valor, titulo_key, filial)
+                            VALUES (:nome, :venc, :nota, :valor, :key, :filial)
                             ON CONFLICT (titulo_key) DO UPDATE
-                            SET nome=:nome, venc=:venc, nota=:nota, valor=:valor
+                            SET nome=:nome, venc=:venc, nota=:nota, valor=:valor, filial=:filial
                         '''), r)
                     now_str = datetime.now().strftime('%d/%m/%Y %H:%M')
                     conn.execute(text('''
@@ -796,7 +846,7 @@ def api_data():
         with engine.connect() as conn:
             rows = conn.execute(text('''
                 SELECT t.nome, t.venc::text, t.nota, t.valor::float, t.titulo_key,
-                       COALESCE(o.obs_text,'') AS obs
+                       COALESCE(o.obs_text,'') AS obs, t.filial
                 FROM titulos t
                 LEFT JOIN observacoes o ON t.titulo_key = o.titulo_key
                 ORDER BY t.venc ASC
@@ -804,7 +854,7 @@ def api_data():
             meta = conn.execute(
                 text("SELECT value FROM meta WHERE key='last_updated'")
             ).fetchone()
-        data = [{'nome':r[0],'venc':r[1],'nota':r[2] or '','valor':r[3],'key':r[4],'obs':r[5]}
+        data = [{'nome':r[0],'venc':r[1],'nota':r[2] or '','valor':r[3],'key':r[4],'obs':r[5],'filial':r[6] or 'Portal GPN'}
                 for r in rows]
         return jsonify({'data': data, 'last_updated': meta[0] if meta else None})
     except Exception as e:
