@@ -254,6 +254,8 @@ body{font-family:'Inter',sans-serif;background:#F4F7FB;color:#0F1E35;min-height:
 .nav-update:hover{background:#1350A0;border-color:#1350A0}
 .nav-logout{background:transparent;color:#7A9ABF;border-color:#D4E2F0}
 .nav-logout:hover{color:#0A1E38;border-color:#7A9ABF}
+.nav-print{background:#213368;color:#fff;border-color:#213368;font-size:12px}
+.nav-print:hover{background:#182755;border-color:#182755}
 .ano-row{display:flex;align-items:center;gap:8px;margin-bottom:32px;flex-wrap:wrap}
 .ano-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#7A9ABF;margin-right:4px}
 .ano-btn{font-family:'Inter',sans-serif;font-size:12px;padding:5px 16px;border-radius:99px;border:1px solid #C8DAF0;background:transparent;color:#4A7AAF;cursor:pointer;transition:all .15s}
@@ -378,6 +380,7 @@ tbody td.obs-col{white-space:normal}
       <div class="header-meta">R.A.I.S. Com. de Produtos Náuticos Ltda ME &nbsp;·&nbsp; <span id="last-updated">carregando...</span></div>
     </div>
     <div class="header-nav">
+      <button class="nav-btn nav-print" onclick="printRelacao()">🖨 Imprimir</button>
       <a class="nav-btn nav-update" href="/upload">↑ Atualizar dados</a>
       <a class="nav-btn nav-logout" href="/logout">Sair</a>
     </div>
@@ -391,6 +394,14 @@ tbody td.obs-col{white-space:normal}
     <button class="ano-btn" data-a="2026">2026</button>
   </div>
   <div class="ano-row" id="filial-row" style="display:none"></div>
+  <div class="ano-row" id="status-row">
+    <span class="ano-label">STATUS</span>
+    <button class="ano-btn active" data-s="Todos">Todos</button>
+    <button class="ano-btn" data-s="atraso">Em atraso</button>
+    <button class="ano-btn" data-s="protestar">🟠 Protestar</button>
+    <button class="ano-btn" data-s="urgente">🔴 Urgente</button>
+    <button class="ano-btn" data-s="cartorio">📬 Em cartório</button>
+  </div>
   <div class="kpi-row">
     <div class="kpi">
       <div class="kpi-label">Total em aberto</div>
@@ -474,6 +485,7 @@ let DATA=[];
 let fAno='Todos';
 let fFilial='Todas';
 let fBusca='';
+let fStatus='Todos';
 const TODAY=new Date('{{ today }}');
 TODAY.setHours(12,0,0,0);
 const brl=v=>'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -638,6 +650,17 @@ function render(){
   if(fFilial!=='Todas')rows=rows.filter(d=>(d.filial||'Portal GPN')===fFilial);
   const q=fBusca.trim().toLowerCase();
   if(q)rows=rows.filter(d=>d.nome.toLowerCase().includes(q));
+  if(fStatus!=='Todos'){
+    rows=rows.filter(d=>{
+      const dias=Math.floor((TODAY-new Date(d.venc))/86400000);
+      const env=obsRaw(d).toLowerCase().includes('enviado');
+      if(fStatus==='cartorio')return env;
+      if(fStatus==='protestar')return!env&&dias>=30&&dias<45;
+      if(fStatus==='urgente')return!env&&dias>=45;
+      if(fStatus==='atraso')return!env&&dias>0&&dias<30;
+      return true;
+    });
+  }
   const total=rows.reduce((s,d)=>s+d.valor,0);
   const clienteSet=new Set(rows.map(d=>d.nome));
   document.getElementById('kpi-total').textContent=brl(total);
@@ -700,6 +723,127 @@ document.querySelectorAll('.ano-btn').forEach(b=>b.addEventListener('click',()=>
 document.getElementById('search-input').addEventListener('input',function(){
   fBusca=this.value;render();
 });
+
+document.querySelectorAll('#status-row .ano-btn').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#status-row .ano-btn').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');fStatus=b.dataset.s;render();
+}));
+
+function printRelacao(){
+  let rows=DATA.filter(d=>fAno==='Todos'||d.venc.slice(0,4)===fAno);
+  if(fFilial!=='Todas')rows=rows.filter(d=>(d.filial||'Portal GPN')===fFilial);
+  const q=fBusca.trim().toLowerCase();
+  if(q)rows=rows.filter(d=>d.nome.toLowerCase().includes(q));
+  if(fStatus!=='Todos'){
+    rows=rows.filter(d=>{
+      const dias=Math.floor((TODAY-new Date(d.venc))/86400000);
+      const env=obsRaw(d).toLowerCase().includes('enviado');
+      if(fStatus==='cartorio')return env;
+      if(fStatus==='protestar')return!env&&dias>=30&&dias<45;
+      if(fStatus==='urgente')return!env&&dias>=45;
+      if(fStatus==='atraso')return!env&&dias>0&&dias<30;
+      return true;
+    });
+  }
+  if(!rows.length){alert('Nenhum titulo encontrado para imprimir.');return;}
+  const total=rows.reduce((s,d)=>s+d.valor,0);
+  const clienteSet=new Set(rows.map(d=>d.nome));
+  const filtros=[];
+  if(fAno!=='Todos')filtros.push('Ano: '+fAno);
+  if(fFilial!=='Todas')filtros.push('Filial: '+fFilial);
+  if(q)filtros.push('Cliente: "'+q+'"');
+  const sLabels={protestar:'Protestar',urgente:'Urgente / Prazo perdido',cartorio:'Em cartorio',atraso:'Em atraso'};
+  if(fStatus!=='Todos')filtros.push('Status: '+sLabels[fStatus]);
+  const filtroTxt=filtros.length?filtros.join(' · '):'Todos os titulos';
+  const rowsHtml=rows.map((d,i)=>{
+    const dias=Math.floor((TODAY-new Date(d.venc))/86400000);
+    const env=obsRaw(d).toLowerCase().includes('enviado');
+    let stTxt,stCol;
+    if(env){stTxt='Em cartorio';stCol='#1565C0';}
+    else if(dias>=60){stTxt='Prazo perdido';stCol='#B71C1C';}
+    else if(dias>=45){stTxt='Urgente';stCol='#B71C1C';}
+    else if(dias>=30){stTxt='Protestar';stCol='#BF5B00';}
+    else if(dias>0){stTxt=dias+'d em atraso';stCol='#2E7D5B';}
+    else{stTxt='Vence hoje';stCol='#33691E';}
+    const bg=i%2===0?'#ffffff':'#F2F6F8';
+    const obs=obsRaw(d);
+    return '<tr style="background:'+bg+'">'+
+      '<td style="padding:8px 10px;font-size:11px;color:#7A9ABF;border-bottom:1px solid #E2EAF4">'+(i+1)+'</td>'+
+      '<td style="padding:8px 10px;font-size:12px;color:#0A1E38;font-weight:600;border-bottom:1px solid #E2EAF4">'+d.nome+'</td>'+
+      '<td style="padding:8px 10px;font-size:12px;color:#3A5A7A;font-family:monospace;border-bottom:1px solid #E2EAF4">'+dtBR(d.venc)+'</td>'+
+      '<td style="padding:8px 10px;font-size:12px;color:#3A5A7A;font-family:monospace;border-bottom:1px solid #E2EAF4">'+(d.nota||'—')+'</td>'+
+      '<td style="padding:8px 10px;font-size:11px;color:'+stCol+';font-weight:700;border-bottom:1px solid #E2EAF4">'+stTxt+'</td>'+
+      '<td style="padding:8px 10px;font-size:11px;color:#5B7A99;font-style:italic;border-bottom:1px solid #E2EAF4;white-space:normal;max-width:180px">'+(obs||'—')+'</td>'+
+      '<td style="padding:8px 10px;font-size:12px;color:#1A5FAA;font-family:monospace;font-weight:700;text-align:right;border-bottom:1px solid #E2EAF4">'+brl(d.valor)+'</td>'+
+      '</tr>';
+  }).join('');
+  const html='<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'+
+    '<title>Relacao de Inadimplentes - '+todayBR()+'</title>'+
+    '<link rel="preconnect" href="https://fonts.googleapis.com">'+
+    '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">'+
+    '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Inter,Arial,sans-serif;background:#fff;color:#0A1E38}'+
+    '@media print{@page{margin:15mm 12mm;size:A4 portrait}.no-print{display:none!important}}</style>'+
+    '</head><body>'+
+    '<div style="background:#213368;padding:26px 32px 20px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+        '<div>'+
+          '<div style="color:#A8BFDF;font-size:9px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:5px">Relatorio Financeiro — Uso Interno</div>'+
+          '<div style="color:#fff;font-size:22px;font-weight:800;letter-spacing:-.3px">Portal GPN</div>'+
+          '<div style="color:#A8BFDF;font-size:11px;margin-top:3px">R.A.I.S. Com. de Produtos Nauticos Ltda ME</div>'+
+        '</div>'+
+        '<div style="text-align:right">'+
+          '<div style="color:#fff;font-size:17px;font-weight:700">Relacao de Inadimplentes</div>'+
+          '<div style="color:#A8BFDF;font-size:11px;margin-top:4px">Emitido em '+todayBR()+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="margin-top:14px;padding-top:14px;border-top:1px solid #3A5282;display:flex;align-items:center;gap:12px">'+
+        '<span style="color:#A8BFDF;font-size:9px;text-transform:uppercase;letter-spacing:.12em;white-space:nowrap">Filtro:</span>'+
+        '<span style="color:#fff;font-size:11px">'+filtroTxt+'</span>'+
+      '</div>'+
+    '</div>'+
+    '<div style="padding:22px 32px">'+
+      '<div style="display:flex;gap:16px;margin-bottom:22px">'+
+        '<div style="background:#F2F6F8;border:1px solid #D4E2F0;border-radius:10px;padding:14px 20px;flex:1">'+
+          '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:#7A9ABF;margin-bottom:4px">Total em aberto</div>'+
+          '<div style="font-size:20px;font-weight:700;color:#213368;font-family:monospace">'+brl(total)+'</div>'+
+        '</div>'+
+        '<div style="background:#F2F6F8;border:1px solid #D4E2F0;border-radius:10px;padding:14px 20px;flex:1">'+
+          '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:#7A9ABF;margin-bottom:4px">Titulos</div>'+
+          '<div style="font-size:20px;font-weight:700;color:#213368;font-family:monospace">'+rows.length+'</div>'+
+        '</div>'+
+        '<div style="background:#F2F6F8;border:1px solid #D4E2F0;border-radius:10px;padding:14px 20px;flex:1">'+
+          '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:#7A9ABF;margin-bottom:4px">Clientes</div>'+
+          '<div style="font-size:20px;font-weight:700;color:#213368;font-family:monospace">'+clienteSet.size+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<table style="width:100%;border-collapse:collapse;border:1px solid #D4E2F0">'+
+        '<thead><tr style="background:#213368">'+
+          '<th style="padding:9px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#A8BFDF;text-align:left">#</th>'+
+          '<th style="padding:9px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#A8BFDF;text-align:left">Razao Social</th>'+
+          '<th style="padding:9px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#A8BFDF;text-align:left">Vencimento</th>'+
+          '<th style="padding:9px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#A8BFDF;text-align:left">Nota</th>'+
+          '<th style="padding:9px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#A8BFDF;text-align:left">Status</th>'+
+          '<th style="padding:9px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#A8BFDF;text-align:left">Observacao</th>'+
+          '<th style="padding:9px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#A8BFDF;text-align:right">Valor</th>'+
+        '</tr></thead>'+
+        '<tbody>'+rowsHtml+'</tbody>'+
+        '<tfoot><tr style="background:#213368">'+
+          '<td colspan="6" style="padding:9px 10px;font-size:10px;color:#A8BFDF;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Total</td>'+
+          '<td style="padding:9px 10px;font-size:13px;color:#fff;font-family:monospace;font-weight:700;text-align:right">'+brl(total)+'</td>'+
+        '</tr></tfoot>'+
+      '</table>'+
+      '<div style="margin-top:24px;padding-top:14px;border-top:1px solid #D4E2F0;display:flex;justify-content:space-between">'+
+        '<span style="font-size:9px;color:#A0B4C8;font-family:monospace">Portal GPN · R.A.I.S. Com. de Produtos Nauticos Ltda ME · Uso interno</span>'+
+        '<span style="font-size:9px;color:#A0B4C8;font-family:monospace">Emitido em '+todayBR()+'</span>'+
+      '</div>'+
+    '</div>'+
+    '<script>window.onload=function(){window.print();}<\/script>'+
+    '</body></html>';
+  const win=window.open('','_blank');
+  if(!win){alert('Permita pop-ups para imprimir.');return;}
+  win.document.write(html);
+  win.document.close();
+}
 
 async function loadData(){
   try{
