@@ -385,7 +385,7 @@ tbody td.obs-col{white-space:normal}
       <a class="nav-btn nav-logout" href="/logout">Sair</a>
     </div>
   </div>
-  <div class="ano-row">
+  <div class="ano-row" id="ano-row">
     <span class="ano-label">ANO</span>
     <button class="ano-btn active" data-a="Todos">Todos</button>
     <button class="ano-btn" data-a="2023">2023</button>
@@ -715,8 +715,8 @@ document.getElementById('cb-all').addEventListener('change',function(){
   this.indeterminate=false;updateSelBar();
 });
 
-document.querySelectorAll('.ano-btn').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('.ano-btn').forEach(x=>x.classList.remove('active'));
+document.querySelectorAll('#ano-row .ano-btn').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#ano-row .ano-btn').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');fAno=b.dataset.a;render();
 }));
 
